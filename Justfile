@@ -22,6 +22,16 @@ test *options:
       --with pytest --with pytest-asyncio --with opentelemetry-proto \
       pytest {{ options }}
 
+# Test suite plus the cross-plugin coexistence test (needs the sibling
+# datasette-otel-parquet checkout; without it that one test skips)
+test-both *options:
+    uv run --no-project --isolated \
+      --with-editable . \
+      --with-editable ~/projects/datasette \
+      --with-editable ~/work/simonw/datasette-otel-parquet \
+      --with pytest --with pytest-asyncio --with opentelemetry-proto --with duckdb \
+      pytest {{ options }}
+
 # Generate demo.db (200-row table) if missing
 demo-db:
     @[ -e demo.db ] || sqlite3 demo.db "create table plants(id integer primary key, name text, height_cm real); with recursive n(i) as (select 1 union all select i + 1 from n where i < 200) insert into plants select i, 'plant ' || i, abs(random() % 300) from n;"

@@ -76,12 +76,16 @@ plugins:
 Without an `endpoint` the plugin logs one line at startup and does nothing —
 installing it does not change behavior until you configure it.
 
-## Running under the real agent
+## Running alongside other OpenTelemetry setups
 
-If you already run Datasette under `opentelemetry-instrument`, or embed it in
-an application that installs its own `TracerProvider`, you don't need this
-plugin — and it knows: on finding an existing provider it prints one line to
-stderr and steps aside entirely.
+This plugin installs a `TracerProvider` only when nobody else has. If a real
+provider already exists — `opentelemetry-instrument`, an embedding
+application, or another exporter plugin such as
+[datasette-otel-parquet](https://github.com/datasette/datasette-otel-parquet)
+imported first — it attaches its span processor to that provider instead, so
+OTLP export works the same whichever wiring got there first. In that attached
+mode the provider owner's sampler and `service.name` apply, and the
+`sample_ratio` / `service_name` config keys are ignored.
 
 Standard `OTEL_*` environment variables also take precedence over plugin
 config on a per-setting basis: `OTEL_EXPORTER_OTLP_ENDPOINT` /

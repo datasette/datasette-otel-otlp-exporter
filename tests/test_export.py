@@ -88,19 +88,21 @@ async def test_dormant_without_endpoint(otlp_server):
 
 
 @pytest.mark.asyncio
-async def test_respects_existing_provider(capsys):
+async def test_attaches_to_existing_sdk_provider(capsys):
+    "A real SDK provider is joined, never replaced. Full flow in test_coexistence.py."
     from conftest import reset_tracer_state
 
     reset_tracer_state()
-    mine = TracerProvider()
+    mine = TracerProvider(shutdown_on_exit=False)
     trace.set_tracer_provider(mine)
 
     datasette_otel_otlp._install()
-    assert datasette_otel_otlp._state["mode"] == "foreign"
+    assert datasette_otel_otlp._state["mode"] == "pending"
+    assert datasette_otel_otlp._state["owns_provider"] is False
     assert trace.get_tracer_provider() is mine
-    assert "already installed" in capsys.readouterr().err
+    assert "attaching" in capsys.readouterr().err
 
-    # The startup hook must leave it alone too
+    # The startup hook must not replace it either
     datasette = make_datasette()
     await datasette.client.get("/")
     assert trace.get_tracer_provider() is mine

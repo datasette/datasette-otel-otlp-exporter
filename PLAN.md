@@ -85,6 +85,7 @@ Work them in order; each is self-contained with acceptance criteria.
 | 05 | [README: quickstart, config reference, privacy](tickets/05-readme.md) | done |
 | 06 | [CI: test + publish workflows](tickets/06-ci.md) | done (pending first push) |
 | 07 | [Stretch: vendor presets](tickets/07-presets.md) | todo (stretch — skip for 0.1) |
+| 08 | [Attach-don't-abdicate: coexistence with other exporter plugins](tickets/08-coexistence.md) | done |
 
 ## Reference material
 

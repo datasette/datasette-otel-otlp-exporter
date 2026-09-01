@@ -16,10 +16,14 @@ installs the provider in two phases:
    exporter at a real OTLP exporter - or, with no endpoint configured, drop
    everything and sample nothing from then on.
 
-Precedence: explicit ``OTEL_*`` environment variables beat plugin config, and
-if some other machinery (the ``opentelemetry-instrument`` agent) already
-installed a provider, this plugin announces itself once on stderr and does
-nothing else.
+Precedence: explicit ``OTEL_*`` environment variables beat plugin config.
+When a real SDK ``TracerProvider`` is already installed (the
+``opentelemetry-instrument`` agent, or another exporter plugin such as
+datasette-otel-parquet imported first - entry-point import order is not
+guaranteed), this plugin does not step aside: it attaches its processor to
+that provider with ``add_span_processor()``, so export still happens. In
+that attached mode the owner's sampler and ``service.name`` apply, and the
+``sample_ratio``/``service_name`` config keys are ignored.
 
 Config settled at import time uses defaults; the startup hook retrofits what
 it can. Concretely: the startup trace's ``service.name`` is fixed up
@@ -137,10 +141,14 @@ class _DeferredSampler(Sampler):
 
 
 # Module state, rebuilt by _install(). "mode" is one of:
-#   "foreign"  - someone else installed a provider; we do nothing
-#   "pending"  - our provider is installed, waiting for the startup hook
+#   "pending"  - processor is wired (own or attached provider), waiting for
+#                the startup hook
 #   "active"   - exporting
-#   "dormant"  - no endpoint anywhere; recording is switched off
+#   "dormant"  - no endpoint anywhere; recording is off (when we own the
+#                provider and nothing else is attached to it) or the
+#                processor just discards (otherwise)
+#   "inert"    - a non-SDK provider we cannot attach to; we do nothing
+# "owns_provider" records which of install/attach happened.
 _state = {}
 
 
@@ -152,42 +160,68 @@ def _install():
     "Runs at module import; also re-runnable by tests after resetting otel globals."
     _state.clear()
     existing = trace.get_tracer_provider()
-    if not isinstance(
-        existing, (trace.ProxyTracerProvider, trace.NoOpTracerProvider)
-    ):
-        _log(
-            "a TracerProvider is already installed "
-            "(running under opentelemetry-instrument?) - leaving it alone"
+
+    if isinstance(existing, (trace.ProxyTracerProvider, trace.NoOpTracerProvider)):
+        # No one owns tracing yet: install our own provider (two-phase).
+        resource_attributes = {}
+        if "OTEL_SERVICE_NAME" not in os.environ:
+            resource_attributes["service.name"] = DEFAULT_SERVICE_NAME
+        resource = Resource.create(resource_attributes)
+
+        # If OTEL_TRACES_SAMPLER is set, let the SDK build the sampler from
+        # the environment (env beats plugin config); otherwise install a
+        # delegating sampler the startup hook can retarget.
+        sampler = (
+            None if "OTEL_TRACES_SAMPLER" in os.environ else _DeferredSampler()
         )
-        _state["mode"] = "foreign"
+
+        exporter = _LazySpanExporter()
+        if sampler is not None:
+            provider = TracerProvider(sampler=sampler, resource=resource)
+        else:
+            provider = TracerProvider(resource=resource)
+        processor = BatchSpanProcessor(exporter)
+        provider.add_span_processor(processor)
+        trace.set_tracer_provider(provider)
+
+        _state.update(
+            mode="pending",
+            owns_provider=True,
+            provider=provider,
+            processor=processor,
+            resource=resource,
+            sampler=sampler,
+            exporter=exporter,
+            dormant_logged=False,
+        )
         return
 
-    resource_attributes = {}
-    if "OTEL_SERVICE_NAME" not in os.environ:
-        resource_attributes["service.name"] = DEFAULT_SERVICE_NAME
-    resource = Resource.create(resource_attributes)
+    if isinstance(existing, TracerProvider):
+        # Someone else (the agent, or another exporter plugin imported
+        # first) owns the provider. Join it: their sampler and service.name
+        # apply, our processor sees every span that ends from here on -
+        # including the whole startup trace, which has not ended yet.
+        exporter = _LazySpanExporter()
+        processor = BatchSpanProcessor(exporter)
+        existing.add_span_processor(processor)
+        _log("attaching to the already-installed TracerProvider")
+        _state.update(
+            mode="pending",
+            owns_provider=False,
+            provider=existing,
+            processor=processor,
+            resource=None,
+            sampler=None,
+            exporter=exporter,
+            dormant_logged=False,
+        )
+        return
 
-    # If OTEL_TRACES_SAMPLER is set, let the SDK build the sampler from the
-    # environment (env beats plugin config); otherwise install a delegating
-    # sampler the startup hook can retarget.
-    sampler = None if "OTEL_TRACES_SAMPLER" in os.environ else _DeferredSampler()
-
-    exporter = _LazySpanExporter()
-    if sampler is not None:
-        provider = TracerProvider(sampler=sampler, resource=resource)
-    else:
-        provider = TracerProvider(resource=resource)
-    provider.add_span_processor(BatchSpanProcessor(exporter))
-    trace.set_tracer_provider(provider)
-
-    _state.update(
-        mode="pending",
-        provider=provider,
-        resource=resource,
-        sampler=sampler,
-        exporter=exporter,
-        dormant_logged=False,
+    _log(
+        "a non-SDK TracerProvider is installed; cannot attach a span "
+        "processor - OTLP export is disabled"
     )
+    _state["mode"] = "inert"
 
 
 def _normalize_endpoint(endpoint):
@@ -208,13 +242,32 @@ def _set_service_name(resource, service_name):
     resource._attributes = BoundedAttributes(attributes=attributes, immutable=True)
 
 
+def _is_sole_processor(provider, processor):
+    """Best-effort: is our processor the only one attached to the provider?
+
+    Switching the sampler to ALWAYS_OFF when dormant is a pure optimization
+    for the unconfigured-install case - but it silences every OTHER
+    processor on the provider too (measured: datasette-otel-parquet
+    attached to a dormant otlp-owned provider recorded nothing). Peeking at
+    the multi-processor is version-dependent private API; when the answer
+    is unknowable, report False so sampling stays on - correctness beats
+    the optimization.
+    """
+    try:
+        return provider._active_span_processor._span_processors == (processor,)
+    except AttributeError:
+        return False
+
+
 def _configure(config):
     "Second phase: called from the startup() hook with plugin config."
-    if _state.get("mode") == "foreign":
+    if _state.get("mode") == "inert":
         return
 
+    owns = _state["owns_provider"]
     if (
-        config.get("service_name")
+        owns
+        and config.get("service_name")
         and "OTEL_SERVICE_NAME" not in os.environ
     ):
         _set_service_name(_state["resource"], str(config["service_name"]))
@@ -224,10 +277,17 @@ def _configure(config):
     endpoint = config.get("endpoint")
 
     if not env_endpoint and not endpoint:
-        # Dormant: no export target anywhere. Stop recording spans too, so an
+        # Dormant: no export target anywhere. When we own the provider and
+        # ours is the only processor on it, stop recording spans too, so an
         # unconfigured install costs as close to nothing as an installed SDK
-        # provider can.
-        if _state["sampler"] is not None:
+        # provider can. When another processor is attached (or the provider
+        # is someone else's), the sampler is not ours to switch off - just
+        # discard our own copies.
+        if (
+            owns
+            and _state["sampler"] is not None
+            and _is_sole_processor(_state["provider"], _state["processor"])
+        ):
             _state["sampler"].set_delegate(ALWAYS_OFF)
         _state["exporter"].configure(None)
         if not _state["dormant_logged"]:
