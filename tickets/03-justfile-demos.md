@@ -1,6 +1,15 @@
 # 03 — Justfile: demo commands against Jaeger and the receiver
 
-Status: todo
+Status: done
+
+Decision on the receiver question: run it by path from
+`~/projects/datasette/demos/otel/otlp_receiver.py`, no vendored copy — the
+Justfile already hardcodes that checkout for `test` and `dev`, so the coupling
+exists either way and a copy would rot.
+
+Verified 2026-08-31: receiver path (108 spans: GET route roots + 50 db.query +
+datasette.startup) and Jaeger path (service `datasette`, 3 traces incl. the
+26-span startup trace, confirmed via the Jaeger query API).
 
 Mirror `~/projects/datasette/demos/otel/Justfile`, but with the plugin doing the wiring —
 the point of the demo is that the seven `OTEL_*` env vars from that Justfile are **gone**.
