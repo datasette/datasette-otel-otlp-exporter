@@ -1,6 +1,6 @@
 # 01 — Scaffold the package
 
-Status: todo
+Status: done
 
 Set up the repo so `just test` passes with the standard "plugin is installed" test.
 Copy the house style from `~/work/simonw/datasette-alerts-ntfy` (smallest recent example).
