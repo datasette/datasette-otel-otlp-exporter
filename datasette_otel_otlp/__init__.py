@@ -12,9 +12,10 @@ installs the provider in two phases:
    ``datasette.startup`` span starts before any plugin hook runs.
 
 2. In the ``startup()`` hook, the first place plugin config is readable,
-   resolve endpoint/headers/service_name/sample_ratio and point the lazy
-   exporter at a real OTLP exporter - or, with no endpoint configured, drop
-   everything and sample nothing from then on.
+   resolve endpoint/headers/service_name/sample_ratio (a ``preset:`` such as
+   ``grafana-cloud`` is sugar that contributes endpoint + auth header
+   defaults) and point the lazy exporter at a real OTLP exporter - or, with
+   no endpoint configured, drop everything and sample nothing from then on.
 
 Precedence: explicit ``OTEL_*`` environment variables beat plugin config.
 When a real SDK ``TracerProvider`` is already installed (the
@@ -33,6 +34,7 @@ the default (always on), so ``sample_ratio`` applies to requests, not to the
 startup trace.
 """
 
+import base64
 import os
 import sys
 import threading
@@ -232,6 +234,61 @@ def _normalize_endpoint(endpoint):
     return endpoint
 
 
+_GRAFANA_CLOUD_ENDPOINT = "https://otlp-gateway-{region}.grafana.net/otlp/v1/traces"
+
+
+def _resolve_grafana_cloud(options):
+    """Endpoint + basic-auth header for Grafana Cloud's OTLP gateway.
+
+    The gateway wants the full per-signal path (the SDK only appends
+    /v1/traces to bare env-var endpoints, and _normalize_endpoint only to
+    path-less ones) and HTTP basic auth with the stack/instance id as
+    username and a grafana.com token as password.
+    """
+    missing = [key for key in ("instance_id", "api_token") if not options.get(key)]
+    if not options.get("endpoint") and not options.get("region"):
+        missing.insert(0, "region (or endpoint)")
+    if missing:
+        raise ValueError(
+            f"{PLUGIN_NAME}: the grafana-cloud preset needs "
+            f"{', '.join(missing)} under the grafana_cloud config key"
+        )
+    endpoint = options.get("endpoint") or _GRAFANA_CLOUD_ENDPOINT.format(
+        region=options["region"]
+    )
+    credentials = f"{options['instance_id']}:{options['api_token']}"
+    token = base64.b64encode(credentials.encode()).decode()
+    return endpoint, {"Authorization": f"Basic {token}"}
+
+
+_PRESETS = {"grafana-cloud": _resolve_grafana_cloud}
+
+
+def _resolve_preset(config):
+    """The (endpoint, headers) defaults contributed by ``preset:``, if any.
+
+    A preset is pure sugar: explicit ``endpoint``/``headers`` config beats
+    its values, and OTEL_* env vars beat both. Misconfiguration (unknown
+    name, missing fields) raises so ``datasette serve`` fails at startup
+    instead of silently exporting nowhere.
+    """
+    name = config.get("preset")
+    if not name:
+        return None, None
+    resolver = _PRESETS.get(str(name))
+    if resolver is None:
+        raise ValueError(
+            f"{PLUGIN_NAME}: unknown preset {name!r} "
+            f"(known presets: {', '.join(sorted(_PRESETS))})"
+        )
+    options_key = str(name).replace("-", "_")
+    options = {
+        str(key): str(value)
+        for key, value in (config.get(options_key) or {}).items()
+    }
+    return resolver(options)
+
+
 def _set_service_name(resource, service_name):
     # Resource is immutable by design, but every span holds this exact object
     # by reference - including the still-open datasette.startup span - so
@@ -264,6 +321,10 @@ def _configure(config):
     if _state.get("mode") == "inert":
         return
 
+    # Resolve before the env checks: a typo'd preset should fail loudly even
+    # when env vars would end up overriding it.
+    preset_endpoint, preset_headers = _resolve_preset(config)
+
     owns = _state["owns_provider"]
     if (
         owns
@@ -274,7 +335,7 @@ def _configure(config):
 
     env_endpoint = any(var in os.environ for var in _ENDPOINT_ENV_VARS)
     env_headers = any(var in os.environ for var in _HEADERS_ENV_VARS)
-    endpoint = config.get("endpoint")
+    endpoint = config.get("endpoint") or preset_endpoint
 
     if not env_endpoint and not endpoint:
         # Dormant: no export target anywhere. When we own the provider and
@@ -303,10 +364,16 @@ def _configure(config):
     exporter_kwargs = {}
     if not env_endpoint:
         exporter_kwargs["endpoint"] = _normalize_endpoint(str(endpoint))
-    if not env_headers and config.get("headers"):
-        exporter_kwargs["headers"] = {
-            str(key): str(value) for key, value in config["headers"].items()
-        }
+    if not env_headers:
+        # Preset headers first, explicit headers merged over them so an
+        # operator can add extras (or replace the auth header) per key.
+        headers = dict(preset_headers or {})
+        if config.get("headers"):
+            headers.update(
+                {str(key): str(value) for key, value in config["headers"].items()}
+            )
+        if headers:
+            exporter_kwargs["headers"] = headers
     _state["exporter"].configure(OTLPSpanExporter(**exporter_kwargs))
     _state["mode"] = "active"
 
