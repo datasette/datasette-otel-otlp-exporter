@@ -48,6 +48,20 @@ async def test_headers_reach_the_wire(otlp_server):
 
 
 @pytest.mark.asyncio
+async def test_headers_env_substitution(otlp_server, monkeypatch):
+    "The README promises {'$env': ...} works for nested header values."
+    monkeypatch.setenv("TEST_OTLP_SECRET", "sekrit")
+    datasette = make_datasette(
+        otlp_server, headers={"x-auth": {"$env": "TEST_OTLP_SECRET"}}
+    )
+    await datasette.client.get("/")
+    flush()
+
+    assert otlp_server.requests
+    assert all(r["headers"].get("x-auth") == "sekrit" for r in otlp_server.requests)
+
+
+@pytest.mark.asyncio
 async def test_service_name_on_the_wire(otlp_server):
     datasette = make_datasette(otlp_server, service_name="my-datasette")
     await datasette.client.get("/")
