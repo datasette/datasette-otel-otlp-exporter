@@ -79,9 +79,9 @@ Work them in order; each is self-contained with acceptance criteria.
 | # | Ticket | Status |
 |---|--------|--------|
 | 01 | [Scaffold the package](tickets/01-scaffold.md) | done |
-| 02 | [Provider + OTLP exporter wiring from plugin config](tickets/02-provider-wiring.md) | todo |
+| 02 | [Provider + OTLP exporter wiring from plugin config](tickets/02-provider-wiring.md) | done |
 | 03 | [Justfile: demo commands against Jaeger and the receiver](tickets/03-justfile-demos.md) | todo |
-| 04 | [Tests: in-process OTLP receiver as a fixture](tickets/04-tests.md) | todo |
+| 04 | [Tests: in-process OTLP receiver as a fixture](tickets/04-tests.md) | done |
 | 05 | [README: quickstart, config reference, privacy](tickets/05-readme.md) | todo |
 | 06 | [CI: test + publish workflows](tickets/06-ci.md) | todo |
 | 07 | [Stretch: vendor presets](tickets/07-presets.md) | todo |

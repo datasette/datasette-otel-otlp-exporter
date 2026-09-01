@@ -1,6 +1,24 @@
 # 04 — Tests: in-process OTLP receiver as a fixture
 
-Status: todo
+Status: done
+
+### Notes from implementation (2026-08-31)
+
+- The "reset per test" gotcha was worse than monkeypatching `trace._TRACER_PROVIDER`:
+  pytest imports conftest (→ plugin `_install()`) before test modules import
+  `datasette.app`, so `datasette.telemetry.tracer` resolves into a **real SDK
+  Tracer permanently bound to that first provider** — a fresh provider per test
+  never sees datasette's spans. `reset_otel` instead keeps the one provider for
+  the whole session and rewinds the plugin's mutable pieces between tests
+  (lazy exporter, deferred sampler delegate, resource attributes, `_state`).
+- Dev-env trap that cost an hour: `uv run --with-editable ~/projects/datasette`
+  does NOT shadow the project venv's PyPI `datasette` (a dependency of this
+  plugin) on sys.path. PyPI 1.0a38 ships `telemetry.py` but doesn't mount
+  `TelemetryMiddleware`, so everything imports fine and zero spans are emitted.
+  The Justfile uses `--no-project --isolated` for this reason.
+- `sample_ratio 0.0` test flushes + clears once after startup first: the startup
+  trace is always sampled (see ticket 02), so only the second request proves the
+  ratio.
 
 The datasette demo's `otlp_receiver.py` proved the wire format is decodable in ~30 lines
 of handler; turn that idea into a pytest fixture and assert real exports end-to-end.

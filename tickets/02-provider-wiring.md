@@ -1,6 +1,6 @@
 # 02 — Provider + OTLP exporter wiring from plugin config
 
-Status: todo
+Status: done
 
 The heart of the plugin: install a `TracerProvider` with a `BatchSpanProcessor` +
 `OTLPSpanExporter` (http/protobuf), configured from plugin config, early enough to catch
@@ -22,6 +22,33 @@ the provider ideally exists before the first span. Options, in preference order:
 3. Env-var-only at import (no plugin config) — rejected, that's just the agent again.
 
 Record the measured answer in this ticket when done.
+
+### Measured answer (2026-08-31, opentelemetry-sdk 1.44)
+
+Option 2 (two-phase), and option 1 would have lost more than one span:
+
+- A span started through the ProxyTracer before `set_tracer_provider()` is a
+  NonRecordingSpan forever — it is NOT retroactively recorded when the provider
+  arrives. `datasette.startup` *starts* before any hook runs and *ends* after the
+  `startup()` hooks, so option 1 loses the startup span **and** its ~20 children
+  (catalog refresh db.query spans etc.). Not "just one span".
+- `BatchSpanProcessor` only sees spans that **end** after it is attached →
+  attaching it at import (wrapped around a lazy exporter, `_LazySpanExporter`)
+  captures the whole startup trace; the lazy exporter buffers any export that
+  fires before config is readable (bounded at 4096 spans).
+- Spans hold the provider's `Resource` **by reference**, so `service_name` config
+  is retrofitted onto the queued startup trace by swapping
+  `resource._attributes` (BoundedAttributes is immutable; replace, don't mutate).
+- Sampling decisions are made at span start and cannot be revoked: `sample_ratio`
+  therefore applies from the startup hook onward. The startup trace itself is
+  always sampled (default ParentBased(ALWAYS_ON), swapped via a delegating
+  `_DeferredSampler`). Documented trade-off.
+- Env precedence is implemented by *omission*: `OTLPSpanExporter(endpoint=...)`
+  beats env vars in the SDK, so when `OTEL_EXPORTER_OTLP{_TRACES,}_ENDPOINT` /
+  `_HEADERS` / `OTEL_SERVICE_NAME` / `OTEL_TRACES_SAMPLER` are set the plugin
+  simply doesn't pass the corresponding argument and the SDK's env handling wins.
+- Dormant mode (no endpoint anywhere): deferred sampler → `ALWAYS_OFF`, lazy
+  exporter → discard, one stderr line, `mode = "dormant"`.
 
 ## Config schema
 
