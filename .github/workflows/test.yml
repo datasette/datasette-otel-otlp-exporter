@@ -1,0 +1,28 @@
+name: Test
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+    - uses: actions/checkout@v5
+    - uses: astral-sh/setup-uv@v7
+      with:
+        python-version: ${{ matrix.python-version }}
+    # TODO: unpin when a datasette 1.0aXX alpha ships the phase-1 otel spans -
+    # then this becomes a plain `uv run pytest`. Until then datasette must come
+    # from the phase-1 branch, and --no-project keeps the PyPI datasette (a
+    # dependency of this plugin) from shadowing it.
+    - run: |
+        uv run --no-project --isolated \
+          --with-editable . \
+          --with "datasette @ git+https://github.com/simonw/datasette@asg017/otel-phase1-4-otlp-demo" \
+          --with pytest --with pytest-asyncio --with opentelemetry-proto \
+          pytest

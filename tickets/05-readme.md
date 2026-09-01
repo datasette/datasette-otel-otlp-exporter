@@ -1,6 +1,13 @@
 # 05 — README: quickstart, config reference, privacy
 
-Status: todo
+Status: done
+
+Quickstart verified 2026-08-31 via the equivalent `just jaeger` + `just dev` +
+`just request` flow; the waterfall screenshot in `.github/jaeger-trace.png` is a
+real capture of that trace (53 spans). The README's `{"$env": ...}` headers
+claim is backed by `test_headers_env_substitution`. Note: the PLAN.md example
+`x-honeycomb-team: $HONEYCOMB_KEY` does NOT substitute — Datasette's syntax is
+the nested `{"$env": "HONEYCOMB_KEY"}` form, which the README shows.
 
 Steal tone and structure from `~/projects/datasette/demos/otel/README.md` (already
 battle-tested language) and the house plugin README shape.
