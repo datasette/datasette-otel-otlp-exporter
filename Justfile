@@ -3,33 +3,24 @@
 #   just jaeger    +  just dev  +  just request  -> trace UI at http://localhost:16686
 #   just receiver  +  just dev  +  just request  -> span summary in the terminal on Ctrl-C
 #
-# Everything runs against an editable checkout of ~/projects/datasette on the
-# phase-1 otel branch (asg017/otel-phase1-4-otlp-demo or later) - no released
-# datasette emits these spans yet. See PLAN.md.
+# No released datasette emits these spans yet, so pyproject.toml's
+# [tool.uv.sources] pins datasette to the phase-1 otel branch of
+# github.com/simonw/datasette. Every recipe below resolves through uv, so it
+# picks that branch up automatically.
 
 default:
     @just --list --unsorted
 
 # Run the test suite
-#
-# --no-project matters: the project venv resolves `datasette` from PyPI, which
-# shadows the --with-editable checkout on sys.path - and PyPI's alpha does not
-# emit the spans this plugin exports.
 test *options:
-    uv run --no-project --isolated \
-      --with-editable . \
-      --with-editable ~/projects/datasette \
-      --with pytest --with pytest-asyncio --with opentelemetry-proto \
-      pytest {{ options }}
+    uv run pytest {{ options }}
 
-# Test suite plus the cross-plugin coexistence test (needs the sibling
-# datasette-otel-parquet checkout; without it that one test skips)
+# Test suite plus the cross-plugin coexistence test (pulls datasette-otel-parquet
+# from GitHub; without it that one test skips)
 test-both *options:
-    uv run --no-project --isolated \
-      --with-editable . \
-      --with-editable ~/projects/datasette \
-      --with-editable ~/work/simonw/datasette-otel-parquet \
-      --with pytest --with pytest-asyncio --with opentelemetry-proto --with duckdb \
+    uv run \
+      --with "datasette-otel-parquet @ git+https://github.com/datasette/datasette-otel-parquet" \
+      --with duckdb \
       pytest {{ options }}
 
 # Generate demo.db (200-row table) if missing
@@ -38,10 +29,7 @@ demo-db:
 
 # Datasette with the plugin exporting to localhost:4318 - one -s flag, no env vars
 dev *options: demo-db
-    uv run --no-project --isolated \
-      --with-editable . \
-      --with-editable ~/projects/datasette \
-      datasette demo.db \
+    uv run datasette demo.db \
         -s plugins.datasette-otel-otlp.endpoint http://localhost:4318 \
         -p 8001 {{ options }}
 
@@ -53,7 +41,8 @@ jaeger:
 
 # UI-less alternative to Jaeger: datasette's demo receiver, Ctrl-C for a summary
 receiver:
-    uv run --no-project --with opentelemetry-proto python ~/projects/datasette/demos/otel/otlp_receiver.py
+    curl -fsSL https://raw.githubusercontent.com/simonw/datasette/asg017/otel-phase1-4-otlp-demo/demos/otel/otlp_receiver.py \
+      | uv run --no-project --with opentelemetry-proto python -
 
 # Make a traced request against `just dev`
 request path="/demo/plants":

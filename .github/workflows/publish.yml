@@ -18,13 +18,10 @@ jobs:
     - uses: astral-sh/setup-uv@v7
       with:
         python-version: ${{ matrix.python-version }}
-    # TODO: unpin when a datasette 1.0aXX alpha ships the phase-1 otel spans
-    - run: |
-        uv run --no-project --isolated \
-          --with-editable . \
-          --with "datasette @ git+https://github.com/simonw/datasette@asg017/otel-phase1-4-otlp-demo" \
-          --with pytest --with pytest-asyncio --with opentelemetry-proto \
-          pytest
+    # TODO: drop the [tool.uv.sources] pin in pyproject.toml once a datasette
+    # alpha ships the phase-1 otel spans; until then uv resolves datasette from
+    # the branch pinned there.
+    - run: uv run pytest
   deploy:
     runs-on: ubuntu-latest
     needs: [test]
