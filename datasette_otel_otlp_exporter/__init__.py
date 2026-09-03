@@ -59,7 +59,7 @@ from opentelemetry.sdk.trace.sampling import (
     TraceIdRatioBased,
 )
 
-PLUGIN_NAME = "datasette-otel-otlp"
+PLUGIN_NAME = "datasette-otel-otlp-exporter"
 DEFAULT_SERVICE_NAME = "datasette"
 
 _ENDPOINT_ENV_VARS = (

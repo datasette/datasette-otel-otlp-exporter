@@ -1,5 +1,5 @@
 [project]
-name = "datasette-otel-otlp"
+name = "datasette-otel-otlp-exporter"
 version = "0.1.0a0"
 description = "Export Datasette's OpenTelemetry spans to any OTLP backend"
 readme = "README.md"
@@ -20,19 +20,19 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project.urls]
-Homepage = "https://github.com/datasette/datasette-otel-otlp"
-Changelog = "https://github.com/datasette/datasette-otel-otlp/releases"
-Issues = "https://github.com/datasette/datasette-otel-otlp/issues"
-CI = "https://github.com/datasette/datasette-otel-otlp/actions"
+Homepage = "https://github.com/datasette/datasette-otel-otlp-exporter"
+Changelog = "https://github.com/datasette/datasette-otel-otlp-exporter/releases"
+Issues = "https://github.com/datasette/datasette-otel-otlp-exporter/issues"
+CI = "https://github.com/datasette/datasette-otel-otlp-exporter/actions"
 
 [project.entry-points.datasette]
-otel_otlp = "datasette_otel_otlp"
+otel_otlp_exporter = "datasette_otel_otlp_exporter"
 
 [dependency-groups]
 dev = ["pytest", "pytest-asyncio", "opentelemetry-proto"]
 
 [tool.setuptools.packages.find]
-include = ["datasette_otel_otlp*"]
+include = ["datasette_otel_otlp_exporter*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"

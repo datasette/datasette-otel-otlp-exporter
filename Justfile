@@ -30,7 +30,7 @@ demo-db:
 # Datasette with the plugin exporting to localhost:4318 - one -s flag, no env vars
 dev *options: demo-db
     uv run datasette demo.db \
-        -s plugins.datasette-otel-otlp.endpoint http://localhost:4318 \
+        -s plugins.datasette-otel-otlp-exporter.endpoint http://localhost:4318 \
         -p 8001 {{ options }}
 
 # Jaeger from its own binary - no Docker. UI on http://localhost:16686

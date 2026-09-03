@@ -2,7 +2,7 @@ from datasette.app import Datasette
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 
-import datasette_otel_otlp
+import datasette_otel_otlp_exporter
 import pytest
 
 
@@ -11,12 +11,12 @@ def make_datasette(otlp_server=None, **plugin_settings):
     if otlp_server is not None:
         plugin_settings.setdefault("endpoint", otlp_server.endpoint)
     if plugin_settings:
-        config = {"plugins": {"datasette-otel-otlp": plugin_settings}}
+        config = {"plugins": {"datasette-otel-otlp-exporter": plugin_settings}}
     return Datasette(memory=True, config=config)
 
 
 def flush():
-    datasette_otel_otlp._state["provider"].force_flush()
+    datasette_otel_otlp_exporter._state["provider"].force_flush()
 
 
 @pytest.mark.asyncio
@@ -82,7 +82,7 @@ async def test_dormant_without_endpoint(otlp_server):
     assert response.status_code == 200
     flush()
 
-    assert datasette_otel_otlp._state["mode"] == "dormant"
+    assert datasette_otel_otlp_exporter._state["mode"] == "dormant"
     assert otlp_server.requests == []
     assert otlp_server.spans == []
 
@@ -96,9 +96,9 @@ async def test_attaches_to_existing_sdk_provider(capsys):
     mine = TracerProvider(shutdown_on_exit=False)
     trace.set_tracer_provider(mine)
 
-    datasette_otel_otlp._install()
-    assert datasette_otel_otlp._state["mode"] == "pending"
-    assert datasette_otel_otlp._state["owns_provider"] is False
+    datasette_otel_otlp_exporter._install()
+    assert datasette_otel_otlp_exporter._state["mode"] == "pending"
+    assert datasette_otel_otlp_exporter._state["owns_provider"] is False
     assert trace.get_tracer_provider() is mine
     assert "attaching" in capsys.readouterr().err
 

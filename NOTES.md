@@ -1,8 +1,8 @@
-# datasette-otel-otlp
+# datasette-otel-otlp-exporter
 
-[![PyPI](https://img.shields.io/pypi/v/datasette-otel-otlp.svg)](https://pypi.org/project/datasette-otel-otlp/)
-[![Tests](https://github.com/datasette/datasette-otel-otlp/actions/workflows/test.yml/badge.svg)](https://github.com/datasette/datasette-otel-otlp/actions/workflows/test.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/datasette/datasette-otel-otlp/blob/main/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/datasette-otel-otlp-exporter.svg)](https://pypi.org/project/datasette-otel-otlp-exporter/)
+[![Tests](https://github.com/datasette/datasette-otel-otlp-exporter/actions/workflows/test.yml/badge.svg)](https://github.com/datasette/datasette-otel-otlp-exporter/actions/workflows/test.yml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/datasette/datasette-otel-otlp-exporter/blob/main/LICENSE)
 
 Datasette emits [OpenTelemetry](https://opentelemetry.io/) spans for every request and
 SQL query — but core never configures an exporter, so by default those spans go
@@ -11,8 +11,8 @@ backend with one line of config, and get traces. No `opentelemetry-instrument`
 agent, no `OTEL_*` environment variable incantations.
 
 ```bash
-datasette install datasette-otel-otlp
-datasette mydb.db -s plugins.datasette-otel-otlp.endpoint http://localhost:4318
+datasette install datasette-otel-otlp-exporter
+datasette mydb.db -s plugins.datasette-otel-otlp-exporter.endpoint http://localhost:4318
 ```
 
 Jaeger, Grafana Tempo, Honeycomb, the OpenTelemetry Collector, Datadog's agent
@@ -39,7 +39,7 @@ then start Datasette with the plugin configured:
 
 ```bash
 jaeger &
-datasette mydb.db -s plugins.datasette-otel-otlp.endpoint http://localhost:4318
+datasette mydb.db -s plugins.datasette-otel-otlp-exporter.endpoint http://localhost:4318
 ```
 
 Load a page, wait a couple of seconds for the batch flush, and open the Jaeger
@@ -48,16 +48,16 @@ the OTLP ingest port and shows nothing in a browser. Pick the `datasette`
 service and you get the full request waterfall, down to individual SQL
 executions:
 
-![A Jaeger trace of one Datasette table page: a GET request span with 53 child spans, mostly db.query spans a few hundred microseconds each](https://raw.githubusercontent.com/datasette/datasette-otel-otlp/main/.github/jaeger-trace.png)
+![A Jaeger trace of one Datasette table page: a GET request span with 53 child spans, mostly db.query spans a few hundred microseconds each](https://raw.githubusercontent.com/datasette/datasette-otel-otlp-exporter/main/.github/jaeger-trace.png)
 
 ## Configuration reference
 
-All configuration lives under `plugins.datasette-otel-otlp` in
+All configuration lives under `plugins.datasette-otel-otlp-exporter` in
 `datasette.yaml` (or via `-s` flags, as above):
 
 ```yaml
 plugins:
-  datasette-otel-otlp:
+  datasette-otel-otlp-exporter:
     endpoint: http://localhost:4318   # required for export; the only mandatory key
     headers:                          # optional - vendor auth etc.
       x-honeycomb-team:
@@ -86,7 +86,7 @@ preset builds the gateway endpoint and basic-auth header for you:
 
 ```yaml
 plugins:
-  datasette-otel-otlp:
+  datasette-otel-otlp-exporter:
     preset: grafana-cloud
     grafana_cloud:
       region: prod-us-east-0        # from your stack's OTLP config tile

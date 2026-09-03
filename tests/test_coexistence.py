@@ -25,7 +25,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 )
 from opentelemetry.sdk.trace.sampling import ALWAYS_OFF
 
-import datasette_otel_otlp
+import datasette_otel_otlp_exporter
 from conftest import reset_tracer_state
 
 
@@ -33,7 +33,7 @@ async def run_startup(endpoint=None):
     "Let the startup() hook resolve config, the real code path."
     config = None
     if endpoint is not None:
-        config = {"plugins": {"datasette-otel-otlp": {"endpoint": endpoint}}}
+        config = {"plugins": {"datasette-otel-otlp-exporter": {"endpoint": endpoint}}}
     datasette = Datasette([], memory=True, config=config)
     await datasette.invoke_startup()
     return datasette
@@ -59,8 +59,8 @@ async def test_attached_exports_and_owner_pipeline_unharmed(otlp_server):
     reset_tracer_state()
     provider, collected = agent_style_provider()
 
-    datasette_otel_otlp._install()
-    state = datasette_otel_otlp._state
+    datasette_otel_otlp_exporter._install()
+    state = datasette_otel_otlp_exporter._state
     assert state["owns_provider"] is False
     assert state["provider"] is provider
 
@@ -84,9 +84,9 @@ async def test_dormant_attached_never_touches_sampler(otlp_server):
     provider, collected = agent_style_provider()
     sampler_before = provider.sampler
 
-    datasette_otel_otlp._install()
+    datasette_otel_otlp_exporter._install()
     await run_startup()  # no endpoint
-    assert datasette_otel_otlp._state["mode"] == "dormant"
+    assert datasette_otel_otlp_exporter._state["mode"] == "dormant"
 
     assert provider.sampler is sampler_before
     emit_span("owner-still-records")
@@ -102,8 +102,8 @@ async def test_dormant_attached_never_touches_sampler(otlp_server):
 async def test_dormant_owner_with_second_processor_keeps_sampling():
     "The starvation fix: dormant + a co-attached processor -> sampling stays on."
     reset_tracer_state()
-    datasette_otel_otlp._install()
-    state = datasette_otel_otlp._state
+    datasette_otel_otlp_exporter._install()
+    state = datasette_otel_otlp_exporter._state
     assert state["owns_provider"] is True
 
     # Another exporter plugin attaches to our provider, parquet-style
@@ -125,8 +125,8 @@ async def test_dormant_owner_with_second_processor_keeps_sampling():
 async def test_dormant_sole_owner_still_stops_sampling():
     "The original optimization survives when no one else is attached."
     reset_tracer_state()
-    datasette_otel_otlp._install()
-    state = datasette_otel_otlp._state
+    datasette_otel_otlp_exporter._install()
+    state = datasette_otel_otlp_exporter._state
     assert state["owns_provider"] is True
 
     await run_startup()  # no endpoint: dormant
@@ -144,8 +144,8 @@ async def test_parquet_first_both_export(otlp_server, tmp_path):
     parquet_plugin._install()
     assert parquet_plugin._state["owns_provider"] is True
 
-    datasette_otel_otlp._install()
-    state = datasette_otel_otlp._state
+    datasette_otel_otlp_exporter._install()
+    state = datasette_otel_otlp_exporter._state
     assert state["owns_provider"] is False
     assert state["provider"] is parquet_plugin._state["provider"]
 
@@ -155,7 +155,7 @@ async def test_parquet_first_both_export(otlp_server, tmp_path):
         memory=True,
         config={
             "plugins": {
-                "datasette-otel-otlp": {"endpoint": otlp_server.endpoint},
+                "datasette-otel-otlp-exporter": {"endpoint": otlp_server.endpoint},
                 "datasette-otel-parquet": {"path": str(tel)},
             }
         },

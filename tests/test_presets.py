@@ -11,8 +11,8 @@ import base64
 import pytest
 from datasette.app import Datasette
 
-import datasette_otel_otlp
-from datasette_otel_otlp import _resolve_preset
+import datasette_otel_otlp_exporter
+from datasette_otel_otlp_exporter import _resolve_preset
 
 GRAFANA_ENDPOINT = "https://otlp-gateway-prod-us-east-0.grafana.net/otlp/v1/traces"
 BASIC_AUTH = "Basic " + base64.b64encode(b"123456:glc_secret").decode()
@@ -21,7 +21,7 @@ BASIC_AUTH = "Basic " + base64.b64encode(b"123456:glc_secret").decode()
 def make_datasette(**plugin_settings):
     return Datasette(
         memory=True,
-        config={"plugins": {"datasette-otel-otlp": plugin_settings}},
+        config={"plugins": {"datasette-otel-otlp-exporter": plugin_settings}},
     )
 
 
@@ -40,7 +40,7 @@ def grafana_settings(**overrides):
 
 
 def delegate():
-    return datasette_otel_otlp._state["exporter"]._delegate
+    return datasette_otel_otlp_exporter._state["exporter"]._delegate
 
 
 # --- unit: the resolver ---
@@ -86,7 +86,7 @@ async def test_preset_configures_the_exporter():
     datasette = make_datasette(**grafana_settings())
     await datasette.invoke_startup()
 
-    assert datasette_otel_otlp._state["mode"] == "active"
+    assert datasette_otel_otlp_exporter._state["mode"] == "active"
     assert delegate()._endpoint == GRAFANA_ENDPOINT
     assert delegate()._headers.get("Authorization") == BASIC_AUTH
 

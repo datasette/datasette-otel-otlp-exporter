@@ -24,11 +24,11 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
 )
 from opentelemetry.sdk.trace.sampling import ALWAYS_OFF, DEFAULT_ON
 
-import datasette_otel_otlp
+import datasette_otel_otlp_exporter
 
 # The provider the plugin installed when this module imported it, plus the
 # original resource attributes - the baseline every test starts from.
-_SNAPSHOT = dict(datasette_otel_otlp._state)
+_SNAPSHOT = dict(datasette_otel_otlp_exporter._state)
 _SNAPSHOT_RESOURCE_ATTRIBUTES = dict(_SNAPSHOT["resource"].attributes)
 
 
@@ -52,7 +52,7 @@ def reset_otel():
     # test does), point the world back at the plugin's own
     trace._TRACER_PROVIDER = _SNAPSHOT["provider"]
     trace._TRACER_PROVIDER_SET_ONCE._done = True
-    state = datasette_otel_otlp._state
+    state = datasette_otel_otlp_exporter._state
     state.clear()
     state.update(_SNAPSHOT)
     state["mode"] = "pending"
