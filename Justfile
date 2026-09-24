@@ -2,11 +2,6 @@
 #
 #   just jaeger    +  just dev  +  just request  -> trace UI at http://localhost:16686
 #   just receiver  +  just dev  +  just request  -> span summary in the terminal on Ctrl-C
-#
-# No released datasette emits these spans yet, so pyproject.toml's
-# [tool.uv.sources] pins datasette to the phase-1 otel branch of
-# github.com/simonw/datasette. Every recipe below resolves through uv, so it
-# picks that branch up automatically.
 
 default:
     @just --list --unsorted

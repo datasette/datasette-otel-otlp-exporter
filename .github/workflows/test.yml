@@ -16,7 +16,4 @@ jobs:
     - uses: astral-sh/setup-uv@v7
       with:
         python-version: ${{ matrix.python-version }}
-    # TODO: drop the [tool.uv.sources] pin in pyproject.toml once a datasette
-    # alpha ships the phase-1 otel spans; until then uv resolves datasette from
-    # the branch pinned there.
     - run: uv run pytest
