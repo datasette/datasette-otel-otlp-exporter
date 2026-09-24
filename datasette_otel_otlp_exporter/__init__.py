@@ -38,6 +38,7 @@ import base64
 import os
 import sys
 import threading
+from typing import Any
 from urllib.parse import urlparse
 
 from datasette import hookimpl
@@ -173,9 +174,7 @@ def _install():
         # If OTEL_TRACES_SAMPLER is set, let the SDK build the sampler from
         # the environment (env beats plugin config); otherwise install a
         # delegating sampler the startup hook can retarget.
-        sampler = (
-            None if "OTEL_TRACES_SAMPLER" in os.environ else _DeferredSampler()
-        )
+        sampler = None if "OTEL_TRACES_SAMPLER" in os.environ else _DeferredSampler()
 
         exporter = _LazySpanExporter()
         if sampler is not None:
@@ -283,8 +282,7 @@ def _resolve_preset(config):
         )
     options_key = str(name).replace("-", "_")
     options = {
-        str(key): str(value)
-        for key, value in (config.get(options_key) or {}).items()
+        str(key): str(value) for key, value in (config.get(options_key) or {}).items()
     }
     return resolver(options)
 
@@ -326,11 +324,7 @@ def _configure(config):
     preset_endpoint, preset_headers = _resolve_preset(config)
 
     owns = _state["owns_provider"]
-    if (
-        owns
-        and config.get("service_name")
-        and "OTEL_SERVICE_NAME" not in os.environ
-    ):
+    if owns and config.get("service_name") and "OTEL_SERVICE_NAME" not in os.environ:
         _set_service_name(_state["resource"], str(config["service_name"]))
 
     env_endpoint = any(var in os.environ for var in _ENDPOINT_ENV_VARS)
@@ -361,7 +355,7 @@ def _configure(config):
         ratio = float(config["sample_ratio"])
         _state["sampler"].set_delegate(ParentBased(TraceIdRatioBased(ratio)))
 
-    exporter_kwargs = {}
+    exporter_kwargs: dict[str, Any] = {}
     if not env_endpoint:
         exporter_kwargs["endpoint"] = _normalize_endpoint(str(endpoint))
     if not env_headers:

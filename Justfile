@@ -10,6 +10,17 @@ default:
 test *options:
     uv run pytest {{ options }}
 
+# Lint, format check and type check
+lint:
+    uv run ruff check .
+    uv run ruff format --check .
+    uv run ty check
+
+# Auto-fix lint issues and reformat
+fmt:
+    uv run ruff check --fix .
+    uv run ruff format .
+
 # Test suite plus the cross-plugin coexistence test (pulls datasette-otel-parquet
 # from GitHub; without it that one test skips)
 test-both *options:

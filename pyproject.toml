@@ -29,7 +29,13 @@ CI = "https://github.com/datasette/datasette-otel-otlp-exporter/actions"
 otel_otlp_exporter = "datasette_otel_otlp_exporter"
 
 [dependency-groups]
-dev = ["pytest", "pytest-asyncio", "opentelemetry-proto"]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "opentelemetry-proto",
+    "ruff>=0.16.8",
+    "ty>=0.0.84",
+]
 
 [tool.setuptools.packages.find]
 include = ["datasette_otel_otlp_exporter*"]

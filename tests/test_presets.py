@@ -93,9 +93,7 @@ async def test_preset_configures_the_exporter():
 
 @pytest.mark.asyncio
 async def test_explicit_endpoint_beats_preset_headers_survive():
-    datasette = make_datasette(
-        **grafana_settings(endpoint="http://localhost:4318")
-    )
+    datasette = make_datasette(**grafana_settings(endpoint="http://localhost:4318"))
     await datasette.invoke_startup()
 
     assert delegate()._endpoint == "http://localhost:4318/v1/traces"
@@ -105,9 +103,7 @@ async def test_explicit_endpoint_beats_preset_headers_survive():
 @pytest.mark.asyncio
 async def test_explicit_headers_merge_over_preset():
     datasette = make_datasette(
-        **grafana_settings(
-            headers={"x-extra": "1", "Authorization": "Bearer mine"}
-        )
+        **grafana_settings(headers={"x-extra": "1", "Authorization": "Bearer mine"})
     )
     await datasette.invoke_startup()
 

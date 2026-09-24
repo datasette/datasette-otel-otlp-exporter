@@ -1,9 +1,9 @@
+import pytest
 from datasette.app import Datasette
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 
 import datasette_otel_otlp_exporter
-import pytest
 
 
 def make_datasette(otlp_server=None, **plugin_settings):

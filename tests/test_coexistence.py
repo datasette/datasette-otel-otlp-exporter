@@ -16,6 +16,7 @@ test_export.py's job.
 """
 
 import pytest
+from conftest import reset_tracer_state
 from datasette.app import Datasette
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -26,7 +27,6 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 from opentelemetry.sdk.trace.sampling import ALWAYS_OFF
 
 import datasette_otel_otlp_exporter
-from conftest import reset_tracer_state
 
 
 async def run_startup(endpoint=None):
@@ -71,9 +71,7 @@ async def test_attached_exports_and_owner_pipeline_unharmed(otlp_server):
     provider.force_flush()
 
     assert "both-pipelines-see-this" in otlp_server.span_names()
-    assert "both-pipelines-see-this" in {
-        s.name for s in collected.get_finished_spans()
-    }
+    assert "both-pipelines-see-this" in {s.name for s in collected.get_finished_spans()}
     assert trace.get_tracer_provider() is provider
 
 
@@ -92,9 +90,7 @@ async def test_dormant_attached_never_touches_sampler(otlp_server):
     emit_span("owner-still-records")
     provider.force_flush()
 
-    assert "owner-still-records" in {
-        s.name for s in collected.get_finished_spans()
-    }
+    assert "owner-still-records" in {s.name for s in collected.get_finished_spans()}
     assert otlp_server.requests == []
 
 
