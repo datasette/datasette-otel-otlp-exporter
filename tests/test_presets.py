@@ -13,6 +13,7 @@ from datasette.app import Datasette
 
 import datasette_otel_otlp_exporter
 from datasette_otel_otlp_exporter import _resolve_preset
+from datasette_otel_otlp_exporter.config import ConfigError, PluginConfig
 
 GRAFANA_ENDPOINT = "https://otlp-gateway-prod-us-east-0.grafana.net/otlp/v1/traces"
 BASIC_AUTH = "Basic " + base64.b64encode(b"123456:glc_secret").decode()
@@ -27,7 +28,6 @@ def make_datasette(**plugin_settings):
 
 def grafana_settings(**overrides):
     settings = {
-        "preset": "grafana-cloud",
         "grafana_cloud": {
             # ints on purpose: -s flags and YAML can both produce non-strings
             "instance_id": 123456,
@@ -46,8 +46,12 @@ def delegate():
 # --- unit: the resolver ---
 
 
+def resolve(settings):
+    return _resolve_preset(PluginConfig.parse(settings))
+
+
 def test_resolver_region_and_auth():
-    endpoint, headers = _resolve_preset(grafana_settings())
+    endpoint, headers = resolve(grafana_settings())
     assert endpoint == GRAFANA_ENDPOINT
     assert headers == {"Authorization": BASIC_AUTH}
 
@@ -56,26 +60,31 @@ def test_resolver_endpoint_override_in_options():
     settings = grafana_settings()
     del settings["grafana_cloud"]["region"]
     settings["grafana_cloud"]["endpoint"] = "https://otlp.example.com/otlp/v1/traces"
-    endpoint, _ = _resolve_preset(settings)
+    endpoint, _ = resolve(settings)
     assert endpoint == "https://otlp.example.com/otlp/v1/traces"
 
 
 def test_resolver_no_preset_is_none():
-    assert _resolve_preset({"endpoint": "http://localhost:4318"}) == (None, None)
+    assert resolve({"endpoint": "http://localhost:4318"}) == (None, None)
 
 
-def test_resolver_unknown_preset():
-    with pytest.raises(ValueError, match="unknown preset 'honeycomb'"):
-        _resolve_preset({"preset": "honeycomb"})
-
-
-def test_resolver_missing_fields_are_named():
-    with pytest.raises(ValueError) as excinfo:
-        _resolve_preset({"preset": "grafana-cloud", "grafana_cloud": {}})
+def test_missing_fields_are_named():
+    with pytest.raises(ConfigError) as excinfo:
+        PluginConfig.parse({"grafana_cloud": {}})
     message = str(excinfo.value)
-    assert "region (or endpoint)" in message
-    assert "instance_id" in message
-    assert "api_token" in message
+    assert "grafana_cloud.instance_id: Field required" in message
+    assert "grafana_cloud.api_token: Field required" in message
+
+
+def test_missing_region_and_endpoint():
+    settings = grafana_settings()
+    del settings["grafana_cloud"]["region"]
+    with pytest.raises(ConfigError, match=r"needs region \(or endpoint\)"):
+        PluginConfig.parse(settings)
+
+
+def test_api_token_not_in_repr():
+    assert "glc_secret" not in repr(PluginConfig.parse(grafana_settings()))
 
 
 # --- integration: through the startup hook ---
@@ -121,16 +130,9 @@ async def test_env_endpoint_beats_preset(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_unknown_preset_fails_startup():
-    datasette = make_datasette(preset="nonesuch")
-    with pytest.raises(ValueError, match="unknown preset"):
-        await datasette.invoke_startup()
-
-
-@pytest.mark.asyncio
 async def test_missing_fields_fail_startup_even_with_env_endpoint(monkeypatch):
     "A typo'd preset block is misconfiguration regardless of env overrides."
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
-    datasette = make_datasette(preset="grafana-cloud")
-    with pytest.raises(ValueError, match="grafana-cloud preset needs"):
+    datasette = make_datasette(grafana_cloud={"region": "prod-us-east-0"})
+    with pytest.raises(ConfigError, match="grafana_cloud.instance_id: Field"):
         await datasette.invoke_startup()

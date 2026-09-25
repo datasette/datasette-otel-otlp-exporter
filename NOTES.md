@@ -81,13 +81,12 @@ installing it does not change behavior until you configure it.
 [Grafana Cloud's free tier](https://grafana.com/docs/grafana-cloud/send-data/otlp/)
 (50 GB of traces/month, 14-day retention) is the cheapest way to get a real
 trace UI without running anything yourself — handy for a machine on Fly.io,
-where the platform offers no trace sink of its own. The `grafana-cloud`
-preset builds the gateway endpoint and basic-auth header for you:
+where the platform offers no trace sink of its own. A `grafana_cloud` block
+builds the gateway endpoint and basic-auth header for you:
 
 ```yaml
 plugins:
   datasette-otel-otlp-exporter:
-    preset: grafana-cloud
     grafana_cloud:
       region: prod-us-east-0        # from your stack's OTLP config tile
       instance_id: "123456"         # ditto ("instance id" / stack id)
@@ -102,9 +101,9 @@ pattern (older stacks vary), set `endpoint:` inside `grafana_cloud` to the
 full URL from the tile, ending in `/otlp/v1/traces`.
 
 Explicit `endpoint`/`headers` config beats preset values (headers merge
-per-key), and an unknown preset or missing field fails at startup rather
-than exporting nowhere. The privacy warning above applies double here:
-`preset:` is one config block that ships your users' SQL to a third party.
+per-key), and a missing or misspelled field fails at startup rather than
+exporting nowhere. The privacy warning above applies double here:
+`grafana_cloud:` is one config block that ships your users' SQL to a third party.
 
 Other vendors don't need presets — they're just OTLP plus one header:
 

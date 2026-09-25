@@ -12,9 +12,9 @@ installs the provider in two phases:
    ``datasette.startup`` span starts before any plugin hook runs.
 
 2. In the ``startup()`` hook, the first place plugin config is readable,
-   resolve endpoint/headers/service_name/sample_ratio (a ``preset:`` such as
-   ``grafana-cloud`` is sugar that contributes endpoint + auth header
-   defaults) and point the lazy exporter at a real OTLP exporter - or, with
+   resolve endpoint/headers/service_name/sample_ratio (a preset block
+   such as ``grafana_cloud`` is sugar that contributes endpoint + auth
+   header defaults) and point the lazy exporter at a real OTLP exporter - or, with
    no endpoint configured, drop everything and sample nothing from then on.
 
 Precedence: explicit ``OTEL_*`` environment variables beat plugin config.
@@ -60,7 +60,8 @@ from opentelemetry.sdk.trace.sampling import (
     TraceIdRatioBased,
 )
 
-PLUGIN_NAME = "datasette-otel-otlp-exporter"
+from .config import PLUGIN_NAME, GrafanaCloudOptions, PluginConfig
+
 DEFAULT_SERVICE_NAME = "datasette"
 
 _ENDPOINT_ENV_VARS = (
@@ -236,7 +237,7 @@ def _normalize_endpoint(endpoint):
 _GRAFANA_CLOUD_ENDPOINT = "https://otlp-gateway-{region}.grafana.net/otlp/v1/traces"
 
 
-def _resolve_grafana_cloud(options):
+def _resolve_grafana_cloud(options: GrafanaCloudOptions):
     """Endpoint + basic-auth header for Grafana Cloud's OTLP gateway.
 
     The gateway wants the full per-signal path (the SDK only appends
@@ -244,47 +245,21 @@ def _resolve_grafana_cloud(options):
     path-less ones) and HTTP basic auth with the stack/instance id as
     username and a grafana.com token as password.
     """
-    missing = [key for key in ("instance_id", "api_token") if not options.get(key)]
-    if not options.get("endpoint") and not options.get("region"):
-        missing.insert(0, "region (or endpoint)")
-    if missing:
-        raise ValueError(
-            f"{PLUGIN_NAME}: the grafana-cloud preset needs "
-            f"{', '.join(missing)} under the grafana_cloud config key"
-        )
-    endpoint = options.get("endpoint") or _GRAFANA_CLOUD_ENDPOINT.format(
-        region=options["region"]
-    )
-    credentials = f"{options['instance_id']}:{options['api_token']}"
+    endpoint = options.endpoint or _GRAFANA_CLOUD_ENDPOINT.format(region=options.region)
+    credentials = f"{options.instance_id}:{options.api_token.get_secret_value()}"
     token = base64.b64encode(credentials.encode()).decode()
     return endpoint, {"Authorization": f"Basic {token}"}
 
 
-_PRESETS = {"grafana-cloud": _resolve_grafana_cloud}
-
-
-def _resolve_preset(config):
-    """The (endpoint, headers) defaults contributed by ``preset:``, if any.
+def _resolve_preset(config: PluginConfig):
+    """The (endpoint, headers) defaults contributed by a preset block, if any.
 
     A preset is pure sugar: explicit ``endpoint``/``headers`` config beats
-    its values, and OTEL_* env vars beat both. Misconfiguration (unknown
-    name, missing fields) raises so ``datasette serve`` fails at startup
-    instead of silently exporting nowhere.
+    its values, and OTEL_* env vars beat both.
     """
-    name = config.get("preset")
-    if not name:
-        return None, None
-    resolver = _PRESETS.get(str(name))
-    if resolver is None:
-        raise ValueError(
-            f"{PLUGIN_NAME}: unknown preset {name!r} "
-            f"(known presets: {', '.join(sorted(_PRESETS))})"
-        )
-    options_key = str(name).replace("-", "_")
-    options = {
-        str(key): str(value) for key, value in (config.get(options_key) or {}).items()
-    }
-    return resolver(options)
+    if config.grafana_cloud is not None:
+        return _resolve_grafana_cloud(config.grafana_cloud)
+    return None, None
 
 
 def _set_service_name(resource, service_name):
@@ -314,22 +289,23 @@ def _is_sole_processor(provider, processor):
         return False
 
 
-def _configure(config):
+def _configure(raw_config):
     "Second phase: called from the startup() hook with plugin config."
+    # Validate before anything else: a typo'd key or preset block should fail
+    # loudly even when env vars would override it or we are inert.
+    config = PluginConfig.parse(raw_config)
     if _state.get("mode") == "inert":
         return
 
-    # Resolve before the env checks: a typo'd preset should fail loudly even
-    # when env vars would end up overriding it.
     preset_endpoint, preset_headers = _resolve_preset(config)
 
     owns = _state["owns_provider"]
-    if owns and config.get("service_name") and "OTEL_SERVICE_NAME" not in os.environ:
-        _set_service_name(_state["resource"], str(config["service_name"]))
+    if owns and config.service_name and "OTEL_SERVICE_NAME" not in os.environ:
+        _set_service_name(_state["resource"], config.service_name)
 
     env_endpoint = any(var in os.environ for var in _ENDPOINT_ENV_VARS)
     env_headers = any(var in os.environ for var in _HEADERS_ENV_VARS)
-    endpoint = config.get("endpoint") or preset_endpoint
+    endpoint = config.endpoint or preset_endpoint
 
     if not env_endpoint and not endpoint:
         # Dormant: no export target anywhere. When we own the provider and
@@ -351,21 +327,18 @@ def _configure(config):
         _state["mode"] = "dormant"
         return
 
-    if _state["sampler"] is not None and "sample_ratio" in config:
-        ratio = float(config["sample_ratio"])
-        _state["sampler"].set_delegate(ParentBased(TraceIdRatioBased(ratio)))
+    if _state["sampler"] is not None and config.sample_ratio is not None:
+        _state["sampler"].set_delegate(
+            ParentBased(TraceIdRatioBased(config.sample_ratio))
+        )
 
     exporter_kwargs: dict[str, Any] = {}
     if not env_endpoint:
-        exporter_kwargs["endpoint"] = _normalize_endpoint(str(endpoint))
+        exporter_kwargs["endpoint"] = _normalize_endpoint(endpoint)
     if not env_headers:
         # Preset headers first, explicit headers merged over them so an
         # operator can add extras (or replace the auth header) per key.
-        headers = dict(preset_headers or {})
-        if config.get("headers"):
-            headers.update(
-                {str(key): str(value) for key, value in config["headers"].items()}
-            )
+        headers = {**(preset_headers or {}), **config.headers}
         if headers:
             exporter_kwargs["headers"] = headers
     _state["exporter"].configure(OTLPSpanExporter(**exporter_kwargs))
@@ -377,4 +350,4 @@ _install()
 
 @hookimpl
 def startup(datasette):
-    _configure(datasette.plugin_config(PLUGIN_NAME) or {})
+    _configure(datasette.plugin_config(PLUGIN_NAME))
