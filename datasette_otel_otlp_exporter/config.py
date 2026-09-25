@@ -3,6 +3,7 @@
 from typing import Annotated
 from urllib.parse import urlparse
 
+from datasette.utils import StartupError
 from pydantic import (
     AfterValidator,
     BaseModel,
@@ -16,7 +17,7 @@ from pydantic import (
 PLUGIN_NAME = "datasette-otel-otlp-exporter"
 
 
-class ConfigError(ValueError):
+class ConfigError(StartupError):
     "Plugin config failed validation; the message lists every problem."
 
 
