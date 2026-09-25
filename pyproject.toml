@@ -1,6 +1,6 @@
 [project]
 name = "datasette-otel-otlp-exporter"
-version = "0.1.0a0"
+version = "0.1.0a1"
 description = "Export Datasette's OpenTelemetry spans to any OTLP backend"
 readme = "README.md"
 authors = [{name = "Alex Garcia"}]
