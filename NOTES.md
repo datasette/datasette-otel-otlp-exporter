@@ -62,19 +62,23 @@ plugins:
     headers:                          # optional - vendor auth etc.
       x-honeycomb-team:
         $env: HONEYCOMB_KEY
-    service_name: my-datasette        # optional, default "datasette"
-    sample_ratio: 0.25                # optional, default 1.0
 ```
 
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `endpoint` | *(none — plugin stays dormant)* | Base OTLP/HTTP URL, e.g. `http://localhost:4318` or `https://api.honeycomb.io`. `/v1/traces` is appended automatically when the URL has no path. |
 | `headers` | `{}` | HTTP headers sent with every export, verbatim — this is where vendor API keys go. Use Datasette's `{"$env": "VAR_NAME"}` substitution to keep secrets out of config files (it works on nested values, as above). |
-| `service_name` | `datasette` | The `service.name` resource attribute — how the instance is labeled in your tracing UI. |
-| `sample_ratio` | `1.0` | Head sampling: the fraction of traces kept, via a parent-based `TraceIdRatioBased` sampler. `0.0` exports nothing. One caveat: the once-per-process startup trace begins before plugin config is readable and is always sampled. |
 
 Without an `endpoint` the plugin logs one line at startup and does nothing —
 installing it does not change behavior until you configure it.
+
+The service name and sampling are set with the standard environment
+variables, read when the plugin loads (so they cover the startup trace too):
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `OTEL_SERVICE_NAME` | `datasette` | The `service.name` resource attribute — how the instance is labeled in your tracing UI. `OTEL_RESOURCE_ATTRIBUTES=service.name=...` works too. |
+| `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG` | `parentbased_always_on` | Head sampling. Keep a quarter of traces with `OTEL_TRACES_SAMPLER=parentbased_traceidratio` and `OTEL_TRACES_SAMPLER_ARG=0.25`. |
 
 ## Preset: Grafana Cloud
 
@@ -117,18 +121,18 @@ Other vendors don't need presets — they're just OTLP plus one header:
 This plugin installs a `TracerProvider` only when nobody else has. If a real
 provider already exists — `opentelemetry-instrument`, an embedding
 application, or another exporter plugin such as
-[datasette-otel-parquet](https://github.com/datasette/datasette-otel-parquet)
+[datasette-otel-file-exporter](https://github.com/datasette/datasette-otel-file-exporter)
 imported first — it attaches its span processor to that provider instead, so
 OTLP export works the same whichever wiring got there first. In that attached
-mode the provider owner's sampler and `service.name` apply, and the
-`sample_ratio` / `service_name` config keys are ignored.
+mode the provider owner's sampler and `service.name` apply, and
+`OTEL_SERVICE_NAME` / `OTEL_TRACES_SAMPLER` only matter as far as the owner
+reads them.
 
 Standard `OTEL_*` environment variables also take precedence over plugin
 config on a per-setting basis: `OTEL_EXPORTER_OTLP_ENDPOINT` /
-`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` /
-`OTEL_EXPORTER_OTLP_TRACES_HEADERS`, `OTEL_SERVICE_NAME` and
-`OTEL_TRACES_SAMPLER` each override the corresponding config key when set, so
-an operator's environment always beats a config file.
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` /
+`OTEL_EXPORTER_OTLP_TRACES_HEADERS` each override the corresponding config
+key when set, so an operator's environment always beats a config file.
 
 ## What spans you get
 

@@ -94,15 +94,6 @@ class PluginConfig(_Model):
     """HTTP headers sent with every export, e.g. vendor API keys. Merged over
     any preset headers. ``OTEL_EXPORTER_OTLP_[TRACES_]HEADERS`` overrides it."""
 
-    service_name: str | None = Field(default=None, min_length=1)
-    """The ``service.name`` resource attribute, default ``datasette``. Ignored
-    when attached to another provider; ``OTEL_SERVICE_NAME`` overrides it."""
-
-    sample_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
-    """Fraction of traces kept, via ``ParentBased(TraceIdRatioBased)``; default
-    1.0. Doesn't apply to the startup trace. Ignored when attached to another
-    provider; ``OTEL_TRACES_SAMPLER`` overrides it."""
-
     grafana_cloud: GrafanaCloudOptions | None = None
     """Grafana Cloud preset: when present, supplies a default ``endpoint`` and
     basic-auth ``headers``, both of which explicit config overrides."""

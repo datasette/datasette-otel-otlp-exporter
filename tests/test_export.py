@@ -1,7 +1,5 @@
 import pytest
 from datasette.app import Datasette
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
 
 import datasette_otel_otlp_exporter
 
@@ -16,7 +14,7 @@ def make_datasette(otlp_server=None, **plugin_settings):
 
 
 def flush():
-    datasette_otel_otlp_exporter._state["provider"].force_flush()
+    datasette_otel_otlp_exporter._processor.force_flush()
 
 
 @pytest.mark.asyncio
@@ -62,63 +60,15 @@ async def test_headers_env_substitution(otlp_server, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_service_name_on_the_wire(otlp_server):
-    datasette = make_datasette(otlp_server, service_name="my-datasette")
-    await datasette.client.get("/")
-    flush()
-
-    assert otlp_server.spans
-    assert all(
-        s["resource"]["service.name"] == "my-datasette" for s in otlp_server.spans
-    )
-    # The retroactive resource swap covers the startup trace too
-    assert "datasette.startup" in otlp_server.span_names()
-
-
-@pytest.mark.asyncio
-async def test_dormant_without_endpoint(otlp_server):
+async def test_dormant_without_endpoint(otlp_server, capsys):
     datasette = make_datasette()
     response = await datasette.client.get("/")
     assert response.status_code == 200
     flush()
 
-    assert datasette_otel_otlp_exporter._state["mode"] == "dormant"
+    assert datasette_otel_otlp_exporter._exporter._delegate is None
+    assert "no endpoint configured" in capsys.readouterr().err
     assert otlp_server.requests == []
-    assert otlp_server.spans == []
-
-
-@pytest.mark.asyncio
-async def test_attaches_to_existing_sdk_provider(capsys):
-    "A real SDK provider is joined, never replaced. Full flow in test_coexistence.py."
-    from conftest import reset_tracer_state
-
-    reset_tracer_state()
-    mine = TracerProvider(shutdown_on_exit=False)
-    trace.set_tracer_provider(mine)
-
-    datasette_otel_otlp_exporter._install()
-    assert datasette_otel_otlp_exporter._state["mode"] == "pending"
-    assert datasette_otel_otlp_exporter._state["owns_provider"] is False
-    assert trace.get_tracer_provider() is mine
-    assert "attaching" in capsys.readouterr().err
-
-    # The startup hook must not replace it either
-    datasette = make_datasette()
-    await datasette.client.get("/")
-    assert trace.get_tracer_provider() is mine
-
-
-@pytest.mark.asyncio
-async def test_sample_ratio_zero(otlp_server):
-    datasette = make_datasette(otlp_server, sample_ratio=0.0)
-    # First request triggers invoke_startup; the startup trace was sampled
-    # before config was readable, so flush it through and discard it
-    await datasette.client.get("/")
-    flush()
-    otlp_server.clear()
-
-    await datasette.client.get("/")
-    flush()
     assert otlp_server.spans == []
 
 

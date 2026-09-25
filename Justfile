@@ -21,12 +21,11 @@ fmt:
     uv run ruff check --fix .
     uv run ruff format .
 
-# Test suite plus the cross-plugin coexistence test (pulls datasette-otel-parquet
-# from GitHub; without it that one test skips)
+# Test suite plus the cross-plugin coexistence test (pulls
+# datasette-otel-file-exporter from GitHub; without it that one test skips)
 test-both *options:
     uv run \
-      --with "datasette-otel-parquet @ git+https://github.com/datasette/datasette-otel-parquet" \
-      --with duckdb \
+      --with "datasette-otel-file-exporter @ git+https://github.com/datasette/datasette-otel-file-exporter" \
       pytest {{ options }}
 
 # Generate demo.db (200-row table) if missing

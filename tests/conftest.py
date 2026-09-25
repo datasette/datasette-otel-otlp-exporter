@@ -1,81 +1,61 @@
 """
-Test fixtures: an in-process OTLP/HTTP receiver and an OpenTelemetry reset.
+Test fixtures: an in-process OTLP/HTTP receiver, a lazy-exporter reset, and a
+fresh-interpreter runner.
 
-set_tracer_provider() is once-per-process in OpenTelemetry, and datasette's
-telemetry module binds its tracer to whichever provider is global when the
-first span resolves - importing this conftest installs the plugin's provider
-before the test modules import datasette.app, so every datasette span in the
-whole pytest run flows to that one provider. Rather than fight the once-only
-semantics with a new provider per test, reset_otel keeps that single provider
-and rewinds the plugin's mutable pieces (lazy exporter, deferred sampler,
-resource attributes, state machine) between tests.
+The plugin installs its provider once, at import. In this process that is
+when conftest imports it, before any datasette span - so in-process tests
+share one provider and only the lazy exporter needs rewinding between them.
+Anything that depends on import order or on OTEL_* variables read at import
+runs in a subprocess via run_python.
 """
 
 import gzip
+import os
+import subprocess
+import sys
+import textwrap
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
-from opentelemetry import trace
-from opentelemetry.attributes import BoundedAttributes
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceRequest,
     ExportTraceServiceResponse,
 )
-from opentelemetry.sdk.trace.sampling import ALWAYS_OFF, DEFAULT_ON
 
 import datasette_otel_otlp_exporter
 
-# The provider the plugin installed when this module imported it, plus the
-# original resource attributes - the baseline every test starts from.
-_SNAPSHOT = dict(datasette_otel_otlp_exporter._state)
-_SNAPSHOT_RESOURCE_ATTRIBUTES = dict(_SNAPSHOT["resource"].attributes)
-
-
-def reset_tracer_state():
-    "Unwind OpenTelemetry's set-once provider global (for foreign-provider tests)."
-    trace._TRACER_PROVIDER = None
-    trace._TRACER_PROVIDER_SET_ONCE._done = False
-
-
-def _quiesce():
-    "Point the lazy exporter at nothing and stop sampling new spans."
-    exporter = _SNAPSHOT["exporter"]
-    exporter.configure(None)
-    if _SNAPSHOT["sampler"] is not None:
-        _SNAPSHOT["sampler"].set_delegate(ALWAYS_OFF)
-
 
 @pytest.fixture(autouse=True)
-def reset_otel():
-    # If the previous test replaced the global provider (the foreign-provider
-    # test does), point the world back at the plugin's own
-    trace._TRACER_PROVIDER = _SNAPSHOT["provider"]
-    trace._TRACER_PROVIDER_SET_ONCE._done = True
-    state = datasette_otel_otlp_exporter._state
-    state.clear()
-    state.update(_SNAPSHOT)
-    state["mode"] = "pending"
-    state["dormant_logged"] = False
-
-    # Drain spans left queued by the previous test into a discarding exporter,
-    # then rearm the lazy exporter as if the startup hook had never run
-    exporter = state["exporter"]
+def reset_exporter():
+    "Drain the previous test's queued spans, then rearm as if startup never ran."
+    exporter = datasette_otel_otlp_exporter._exporter
     exporter.configure(None)
-    state["provider"].force_flush()
+    datasette_otel_otlp_exporter._processor.force_flush()
     with exporter._lock:
         exporter._configured = False
-        exporter._delegate = None
         exporter._pending = []
-
-    if state["sampler"] is not None:
-        state["sampler"].set_delegate(DEFAULT_ON)
-    state["resource"]._attributes = BoundedAttributes(
-        attributes=_SNAPSHOT_RESOURCE_ATTRIBUTES, immutable=True
-    )
     yield
-    # Quiesce so nothing tries to POST to this test's (now gone) server
-    _quiesce()
+    # Stop exporting to this test's (soon gone) server
+    exporter.configure(None)
+
+
+def run_python(script, **env):
+    """Run a script in a fresh interpreter with extra env vars set.
+
+    Datasette's plugins (so this one) load when the script imports
+    datasette.app. The SDK's atexit shutdown flushes every span on exit.
+    """
+    result = subprocess.run(
+        [sys.executable, "-c", textwrap.dedent(script)],
+        env={**os.environ, **env},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    return result
 
 
 def _attribute_value(value):

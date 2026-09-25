@@ -40,7 +40,7 @@ def grafana_settings(**overrides):
 
 
 def delegate():
-    return datasette_otel_otlp_exporter._state["exporter"]._delegate
+    return datasette_otel_otlp_exporter._exporter._delegate
 
 
 # --- unit: the resolver ---
@@ -95,7 +95,6 @@ async def test_preset_configures_the_exporter():
     datasette = make_datasette(**grafana_settings())
     await datasette.invoke_startup()
 
-    assert datasette_otel_otlp_exporter._state["mode"] == "active"
     assert delegate()._endpoint == GRAFANA_ENDPOINT
     assert delegate()._headers.get("Authorization") == BASIC_AUTH
 

@@ -13,7 +13,6 @@ def test_empty_config_is_valid():
         config = PluginConfig.parse(raw)
         assert config.endpoint is None
         assert config.headers == {}
-        assert config.sample_ratio is None
         assert config.grafana_cloud is None
 
 
@@ -22,14 +21,10 @@ def test_full_config():
         {
             "endpoint": "http://localhost:4318",
             "headers": {"x-honeycomb-team": "key"},
-            "service_name": "my-datasette",
-            "sample_ratio": 0.25,
         }
     )
     assert config.endpoint == "http://localhost:4318"
     assert config.headers == {"x-honeycomb-team": "key"}
-    assert config.service_name == "my-datasette"
-    assert config.sample_ratio == 0.25
 
 
 def test_numbers_coerce_to_strings():
@@ -40,23 +35,18 @@ def test_numbers_coerce_to_strings():
     assert config.headers == {"x-id": "42"}
 
 
-def test_sample_ratio_accepts_numeric_string():
-    assert PluginConfig.parse({"sample_ratio": "0.5"}).sample_ratio == 0.5
-
-
 @pytest.mark.parametrize(
     "raw,expected",
     [
         ({"sample_rate": 0.5}, "sample_rate: Extra inputs are not permitted"),
+        # Removed in favor of OTEL_SERVICE_NAME / OTEL_TRACES_SAMPLER
+        ({"service_name": "x"}, "service_name: Extra inputs are not permitted"),
+        ({"sample_ratio": 0.5}, "sample_ratio: Extra inputs are not permitted"),
         ({"endpiont": "http://x"}, "endpiont: Extra inputs are not permitted"),
-        ({"sample_ratio": 1.5}, "sample_ratio: Input should be less than or equal"),
-        ({"sample_ratio": -0.1}, "sample_ratio: Input should be greater than or"),
-        ({"sample_ratio": "lots"}, "sample_ratio: Input should be a valid number"),
         ({"endpoint": "localhost:4318"}, "endpoint: must be an http:// or https://"),
         ({"endpoint": ""}, "endpoint: must be an http:// or https://"),
         ({"headers": "x-key: 1"}, "headers: Input should be a valid dictionary"),
         ({"headers": {"x-key": {"nested": 1}}}, "headers.x-key: Input should be"),
-        ({"service_name": ""}, "service_name: String should have at least 1"),
         ({"preset": "grafana-cloud"}, "preset: Extra inputs are not permitted"),
         (
             {
